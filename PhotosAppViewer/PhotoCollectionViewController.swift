@@ -18,16 +18,15 @@ final class PhotoCollectionViewController: UICollectionViewController, UICollect
     
     override func viewDidLoad() {
         super.viewDidLoad()
-
-        // Register cell classes
-        //self.collectionView!.register(UICollectionViewCell.self, forCellWithReuseIdentifier: PhotoCell.reuseId)
-
+        
         self.setup()
     }
 
     override func didReceiveMemoryWarning() {
         super.didReceiveMemoryWarning()
         // Dispose of any resources that can be recreated.
+        
+        self.photoDataSource.clearCache()
     }
     
     // MARK: - Private
@@ -35,6 +34,7 @@ final class PhotoCollectionViewController: UICollectionViewController, UICollect
         
         self.photoDataSource = PhotoDataSource()
         self.photoDataSource.delegate = self
+        self.photoDataSource.dataSource = self
         
         self.photoDataSource.requestPhotoAuthorization {[weak self] (isAuthorized) in
             guard isAuthorized else { return }
@@ -64,10 +64,7 @@ final class PhotoCollectionViewController: UICollectionViewController, UICollect
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: PhotoCell.reuseId, for: indexPath) as! PhotoCell
     
         // Configure the cell
-        self.photoDataSource.requestImage(for: indexPath.item) { (photo) in
-            cell.photoImageView.image = photo
-        }
-    
+        cell.photoIdentifier = self.photoDataSource.photoIdentifier(for: indexPath.item)
         return cell
     }
 
@@ -75,6 +72,20 @@ final class PhotoCollectionViewController: UICollectionViewController, UICollect
 
     override func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         
+    }
+    
+    override func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
+        let photoCell = cell as! PhotoCell
+
+        self.photoDataSource.requestImageFor(index: indexPath.item) { (photo) in
+            // check to see if the image requested cell still has the same id or if it has been reused, if reused, don't set image
+            guard photoCell.photoIdentifier == self.photoDataSource.photoIdentifier(for: indexPath.item) else { return }
+            photoCell.photoImageView.image = photo
+        }
+    }
+    
+    override func collectionView(_ collectionView: UICollectionView, didEndDisplaying cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
+        self.photoDataSource.cancelImageRequest(at: indexPath.item)
     }
     
     // MARK: - UICollectionViewDataSourcePrefetching methods
@@ -88,10 +99,37 @@ final class PhotoCollectionViewController: UICollectionViewController, UICollect
     }
 }
 
+// MARK: - UICollectionViewDelegateFlowLayout methods
+
+extension PhotoCollectionViewController: UICollectionViewDelegateFlowLayout {
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
+        let width = self.view.bounds.size.width / 3.1
+        return CGSize(width: width, height: width)
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumLineSpacingForSectionAt section: Int) -> CGFloat {
+        return 5.0
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumInteritemSpacingForSectionAt section: Int) -> CGFloat {
+        return 5.0
+    }
+}
+
 // MARK: - PhotoDataSourceDelegate methods
 
 extension PhotoCollectionViewController: PhotoDataSourceDelegate {
     func photoDataSourceDidupdate() {
-        self.collectionView?.reloadData()
+        self.collectionView?.reloadSections(IndexSet(integer: 0))
+    }
+}
+
+// MARK: - PhotoDataSourceDataSource methods
+
+extension PhotoCollectionViewController: PhotoDataSourceDataSource {
+    func photoDataSourceTargetSize() -> CGSize {
+        let scale = UIScreen.main.scale
+        let cellSize = (self.collectionViewLayout as! UICollectionViewFlowLayout).itemSize
+        return CGSize(width: cellSize.width * scale, height: cellSize.height * scale)
     }
 }

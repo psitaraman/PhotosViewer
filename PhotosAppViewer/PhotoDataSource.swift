@@ -14,29 +14,30 @@ protocol PhotoDataSourceDelegate: class {
 }
 
 protocol PhotoDataSourceDataSource: class {
+    func photoDataSourceTargetSize() -> CGSize
     func photoDataSourceCacheInfo() -> CacheInfo
 }
 
-// default implementation of PhotoDataSourceDataSource - implementation is optional outside of this class
+// default implementation
 extension PhotoDataSourceDataSource {
     func photoDataSourceCacheInfo() -> CacheInfo {
-        return CacheInfo(targetSize: CGSize(width: 100.0, height: 100.0), contentMode: .aspectFit, options: nil)
+        return CacheInfo(contentMode: .aspectFit, options: nil)
     }
 }
 
 struct CacheInfo {
-    let targetSize: CGSize
     let contentMode: PHImageContentMode
     let options: PHImageRequestOptions?
 }
 
-final class PhotoDataSource: NSObject, PhotoDataSourceDataSource {
+final class PhotoDataSource: NSObject {
     
     // MARK: - Properties
     
     weak var delegate: PhotoDataSourceDelegate?
     weak var dataSource: PhotoDataSourceDataSource?
-
+    
+    fileprivate var requestIdLookup = [Int : PHImageRequestID]()
     fileprivate var mediaAssets: PHFetchResult<PHAsset>? {
         didSet {
             self.delegate?.photoDataSourceDidupdate()
@@ -52,19 +53,24 @@ final class PhotoDataSource: NSObject, PhotoDataSourceDataSource {
     override init() {
         super.init()
         
-        self.dataSource = self
+        //register photo library change observer
+        PHPhotoLibrary.shared().register(self)
+    }
+    
+    deinit {
+        PHPhotoLibrary.shared().unregisterChangeObserver(self)
     }
     
     // MARK: - Public
     
     func loadPhotoData() {
-        let options = PHFetchOptions()
-        options.sortDescriptors = [ NSSortDescriptor(key: "creationDate", ascending: true) ]
-        /*let videoPredicate = NSPredicate(format: "mediaType = %d", PHAssetMediaType.video.rawValue)
-        let imagePredicate = NSPredicate(format: "mediaType = %d", PHAssetMediaType.image.rawValue)
-        let predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [videoPredicate, imagePredicate])
         
-        options.predicate = predicate*/
+        self.cacheManager.allowsCachingHighQualityImages = true
+        
+        let options = PHFetchOptions()
+        
+        // sort newest photos first
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
         
         Thread.executeOnMainThread {
             // Update the cached fetch result.
@@ -88,28 +94,55 @@ final class PhotoDataSource: NSObject, PhotoDataSourceDataSource {
     /// That way cache can load the image leading to faster access and better performance
     func cacheImagesAt(indices: [Int], shouldStopCaching: Bool) {
         let assets = indices.flatMap({ self.requestAsset(for: $0) })
-        guard let cacheInfo = self.dataSource?.photoDataSourceCacheInfo() else { return }
+        guard let cacheInfo = self.dataSource?.photoDataSourceCacheInfo(), let size = self.dataSource?.photoDataSourceTargetSize() else { return }
         
         guard  shouldStopCaching else {
-            self.cacheManager.startCachingImages(for: assets, targetSize: cacheInfo.targetSize, contentMode: cacheInfo.contentMode, options: cacheInfo.options)
+            self.cacheManager.startCachingImages(for: assets, targetSize: size, contentMode: cacheInfo.contentMode, options: cacheInfo.options)
             return
         }
-        self.cacheManager.stopCachingImages(for: assets, targetSize: cacheInfo.targetSize, contentMode: cacheInfo.contentMode, options: cacheInfo.options)
+        self.cacheManager.stopCachingImages(for: assets, targetSize: size, contentMode: cacheInfo.contentMode, options: cacheInfo.options)
     }
     
-    func requestImage(for index: Int, completion: @escaping (UIImage) -> ()) {
-        guard let asset = self.requestAsset(for: index), let cacheInfo = self.dataSource?.photoDataSourceCacheInfo() else { return }
+    func requestImageFor(index: Int, completion: @escaping (UIImage) -> ()) {
+        guard let asset = self.requestAsset(for: index), let cacheInfo = self.dataSource?.photoDataSourceCacheInfo(), let size = self.dataSource?.photoDataSourceTargetSize() else { return }
 
-        self.cacheManager.requestImage(for: asset, targetSize: cacheInfo.targetSize, contentMode: cacheInfo.contentMode, options: cacheInfo.options) { (image, _) in
+        let requestId = self.cacheManager.requestImage(for: asset, targetSize: size, contentMode: cacheInfo.contentMode, options: cacheInfo.options) {[weak self] (image, _) in
+            
+            defer {
+                // cleanup
+                self?.requestIdLookup.removeValue(forKey: index)
+            }
             
             // only return completion if image is non nil otherwise ignore request
             guard let cachedImage = image else { return }
             Thread.executeOnMainThread { completion(cachedImage) }
         }
+        
+        // save request Id so that it can be canceled if needed
+        self.requestIdLookup[index] = requestId
+    }
+    
+    func cancelImageRequest(at index: Int) {
+        
+        defer {
+            // cleanup
+            self.requestIdLookup.removeValue(forKey: index)
+        }
+        
+        guard let identifier = self.requestIdLookup[index] else { return }
+        self.cacheManager.cancelImageRequest(identifier)
     }
     
     func photoCount() -> Int {
         return self.mediaAssets?.count ?? 0
+    }
+    
+    func photoIdentifier(for index: Int) -> String {
+        return self.requestAsset(for: index)?.localIdentifier ?? ""
+    }
+    
+    func clearCache() {
+        self.cacheManager.stopCachingImagesForAllAssets()
     }
     
     // MARK: - Private

@@ -12,7 +12,14 @@ final class PhotoCell: UICollectionViewCell {
     
     // MARK: - Properties
     static let reuseId = String(describing: PhotoCell.self)
+    var photoIdentifier: String!
     
     // MARK: - IBOutlets
     @IBOutlet weak var photoImageView: UIImageView!
+    
+    // MARK: - Lifecycle
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        self.photoImageView.image = nil
+    }
 }
