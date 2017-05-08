@@ -85,6 +85,8 @@
 		E81D4A291EBFC49A00F7A377 /* Controllers */ = {
 			isa = PBXGroup;
 			children = (
+				E8525BCC1EBFA83E00750516 /* ViewController.swift */,
+				E81D4A271EBFC41C00F7A377 /* PhotoCollectionViewController.swift */,
 			);
 			name = Controllers;
 			sourceTree = "<group>";
@@ -101,6 +103,7 @@
 			isa = PBXGroup;
 			children = (
 				E81D4A2E1EBFCA4300F7A377 /* PhotoDataSource.swift */,
+				E8525BCA1EBFA83D00750516 /* AppDelegate.swift */,
 			);
 			name = Models;
 			sourceTree = "<group>";
@@ -132,13 +135,10 @@
 				E81D4A2B1EBFC4C200F7A377 /* Models */,
 				E81D4A2A1EBFC4B700F7A377 /* Views */,
 				E81D4A291EBFC49A00F7A377 /* Controllers */,
-				E8525BCA1EBFA83D00750516 /* AppDelegate.swift */,
-				E8525BCC1EBFA83E00750516 /* ViewController.swift */,
 				E8525BCE1EBFA83E00750516 /* Main.storyboard */,
 				E8525BD11EBFA83F00750516 /* Assets.xcassets */,
 				E8525BD31EBFA83F00750516 /* LaunchScreen.storyboard */,
 				E8525BD61EBFA83F00750516 /* Info.plist */,
-				E81D4A271EBFC41C00F7A377 /* PhotoCollectionViewController.swift */,
 			);
 			path = PhotosAppViewer;
 			sourceTree = "<group>";

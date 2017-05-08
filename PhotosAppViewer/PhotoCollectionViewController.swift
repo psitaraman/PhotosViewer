@@ -120,7 +120,9 @@ extension PhotoCollectionViewController: UICollectionViewDelegateFlowLayout {
 
 extension PhotoCollectionViewController: PhotoDataSourceDelegate {
     func photoDataSourceDidupdate() {
-        self.collectionView?.reloadSections(IndexSet(integer: 0))
+        self.collectionView?.performBatchUpdates({ [weak self] in
+            self?.collectionView?.reloadSections(IndexSet(integer: 0))
+        }, completion: nil)
     }
 }
 
