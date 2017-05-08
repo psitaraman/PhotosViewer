@@ -10,6 +10,11 @@ import UIKit
 
 final class PhotoCollectionViewController: UICollectionViewController {
 
+    
+    // MARK: - Properties
+    
+    fileprivate var photoDataSource: PhotoDataSource!
+    
     // MARK: - Lifecycle
     
     override func viewDidLoad() {
@@ -18,7 +23,7 @@ final class PhotoCollectionViewController: UICollectionViewController {
         // Register cell classes
         self.collectionView!.register(UICollectionViewCell.self, forCellWithReuseIdentifier: PhotoCell.reuseId)
 
-        // Do any additional setup after loading the view.
+        self.setup()
     }
 
     override func didReceiveMemoryWarning() {
@@ -27,10 +32,19 @@ final class PhotoCollectionViewController: UICollectionViewController {
     }
     
     // MARK: - Private
-    private func loadPhotoAppData() {
-    
+    private func setup() {
+        
+        self.photoDataSource = PhotoDataSource()
+        
+        self.photoDataSource.requestPhotoAuthorization {[weak self] (isAuthorized) in
+            guard isAuthorized else { return }
+            self?.loadData()
+        }
     }
-
+    
+    private func loadData() {
+        self.photoDataSource.loadPhotoData()
+    }
 
     // MARK: - UICollectionViewDataSource
 
