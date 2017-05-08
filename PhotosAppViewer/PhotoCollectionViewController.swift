@@ -8,8 +8,7 @@
 
 import UIKit
 
-final class PhotoCollectionViewController: UICollectionViewController {
-
+final class PhotoCollectionViewController: UICollectionViewController, UICollectionViewDataSourcePrefetching {
     
     // MARK: - Properties
     
@@ -21,7 +20,7 @@ final class PhotoCollectionViewController: UICollectionViewController {
         super.viewDidLoad()
 
         // Register cell classes
-        self.collectionView!.register(UICollectionViewCell.self, forCellWithReuseIdentifier: PhotoCell.reuseId)
+        //self.collectionView!.register(UICollectionViewCell.self, forCellWithReuseIdentifier: PhotoCell.reuseId)
 
         self.setup()
     }
@@ -35,6 +34,7 @@ final class PhotoCollectionViewController: UICollectionViewController {
     private func setup() {
         
         self.photoDataSource = PhotoDataSource()
+        self.photoDataSource.delegate = self
         
         self.photoDataSource.requestPhotoAuthorization {[weak self] (isAuthorized) in
             guard isAuthorized else { return }
@@ -45,57 +45,53 @@ final class PhotoCollectionViewController: UICollectionViewController {
     private func loadData() {
         self.photoDataSource.loadPhotoData()
     }
-
-    // MARK: - UICollectionViewDataSource
-
-    override func numberOfSections(in collectionView: UICollectionView) -> Int {
-        // #warning Incomplete implementation, return the number of sections
-        return 0
+    
+    private func shouldCacheImages(_ shouldCacheImages:Bool, for indexPaths: [IndexPath]) {
+        let indices = indexPaths.flatMap({ $0.item })
+        self.photoDataSource.cacheImagesAt(indices: indices, shouldStopCaching: !shouldCacheImages)
     }
+
+    // MARK: - UICollectionViewDataSource methods
+
+    override func numberOfSections(in collectionView: UICollectionView) -> Int { return 1 }
 
 
     override func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        // #warning Incomplete implementation, return the number of items
-        return 0
+        return self.photoDataSource.photoCount()
     }
 
     override func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
-        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: PhotoCell.reuseId, for: indexPath)
+        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: PhotoCell.reuseId, for: indexPath) as! PhotoCell
     
         // Configure the cell
+        self.photoDataSource.requestImage(for: indexPath.item) { (photo) in
+            cell.photoImageView.image = photo
+        }
     
         return cell
     }
 
-    // MARK: - UICollectionViewDelegate
+    // MARK: - UICollectionViewDelegate methods
 
-    /*
-    // Uncomment this method to specify if the specified item should be highlighted during tracking
-    override func collectionView(_ collectionView: UICollectionView, shouldHighlightItemAt indexPath: IndexPath) -> Bool {
-        return true
+    override func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        
     }
-    */
-
-    /*
-    // Uncomment this method to specify if the specified item should be selected
-    override func collectionView(_ collectionView: UICollectionView, shouldSelectItemAt indexPath: IndexPath) -> Bool {
-        return true
-    }
-    */
-
-    /*
-    // Uncomment these methods to specify if an action menu should be displayed for the specified item, and react to actions performed on the item
-    override func collectionView(_ collectionView: UICollectionView, shouldShowMenuForItemAt indexPath: IndexPath) -> Bool {
-        return false
-    }
-
-    override func collectionView(_ collectionView: UICollectionView, canPerformAction action: Selector, forItemAt indexPath: IndexPath, withSender sender: Any?) -> Bool {
-        return false
-    }
-
-    override func collectionView(_ collectionView: UICollectionView, performAction action: Selector, forItemAt indexPath: IndexPath, withSender sender: Any?) {
     
+    // MARK: - UICollectionViewDataSourcePrefetching methods
+    
+    func collectionView(_ collectionView: UICollectionView, prefetchItemsAt indexPaths: [IndexPath]) {
+        self.shouldCacheImages(true, for: indexPaths)
     }
-    */
+    
+    func collectionView(_ collectionView: UICollectionView, cancelPrefetchingForItemsAt indexPaths: [IndexPath]) {
+        self.shouldCacheImages(false, for: indexPaths)
+    }
+}
 
+// MARK: - PhotoDataSourceDelegate methods
+
+extension PhotoCollectionViewController: PhotoDataSourceDelegate {
+    func photoDataSourceDidupdate() {
+        self.collectionView?.reloadData()
+    }
 }

@@ -10,15 +10,14 @@ import UIKit
 import Photos
 
 protocol PhotoDataSourceDelegate: class {
-    func photo(dataSource: PhotoDataSource, didFetchPhotos: [AnyObject])
-    func photo(dataSource: PhotoDataSource, didChangePhotos: [AnyObject])
+    func photoDataSourceDidupdate()
 }
 
 protocol PhotoDataSourceDataSource: class {
     func photoDataSourceCacheInfo() -> CacheInfo
 }
 
-// default implementation - implementation is optional outside of this class
+// default implementation of PhotoDataSourceDataSource - implementation is optional outside of this class
 extension PhotoDataSourceDataSource {
     func photoDataSourceCacheInfo() -> CacheInfo {
         return CacheInfo(targetSize: CGSize(width: 100.0, height: 100.0), contentMode: .aspectFit, options: nil)
@@ -38,9 +37,13 @@ final class PhotoDataSource: NSObject, PhotoDataSourceDataSource {
     weak var delegate: PhotoDataSourceDelegate?
     weak var dataSource: PhotoDataSourceDataSource?
 
-    fileprivate var mediaAssets: PHFetchResult<PHAsset>?
+    fileprivate var mediaAssets: PHFetchResult<PHAsset>? {
+        didSet {
+            self.delegate?.photoDataSourceDidupdate()
+        }
+    }
     
-    fileprivate lazy var imageCacheManager: PHCachingImageManager  = {
+    fileprivate lazy var cacheManager: PHCachingImageManager  = {
         return PHCachingImageManager()
     }()
     
@@ -62,7 +65,11 @@ final class PhotoDataSource: NSObject, PhotoDataSourceDataSource {
         let predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [videoPredicate, imagePredicate])
         
         options.predicate = predicate*/
-        self.mediaAssets = PHAsset.fetchAssets(with: options)
+        
+        Thread.executeOnMainThread {
+            // Update the cached fetch result.
+            self.mediaAssets = PHAsset.fetchAssets(with: options)
+        }
     }
     
     func requestPhotoAuthorization(completion: @escaping (Bool) -> ()) {
@@ -77,20 +84,37 @@ final class PhotoDataSource: NSObject, PhotoDataSourceDataSource {
         }
     }
     
+    /// Call this method for an index before calling requestImage(for index: Int, completion: @escaping (UIImage) -> ())
+    /// That way cache can load the image leading to faster access and better performance
     func cacheImagesAt(indices: [Int], shouldStopCaching: Bool) {
-        let assets = indices.flatMap({ self.requestImage(for: $0) })
+        let assets = indices.flatMap({ self.requestAsset(for: $0) })
         guard let cacheInfo = self.dataSource?.photoDataSourceCacheInfo() else { return }
         
         guard  shouldStopCaching else {
-            self.imageCacheManager.startCachingImages(for: assets, targetSize: cacheInfo.targetSize, contentMode: cacheInfo.contentMode, options: cacheInfo.options)
+            self.cacheManager.startCachingImages(for: assets, targetSize: cacheInfo.targetSize, contentMode: cacheInfo.contentMode, options: cacheInfo.options)
             return
         }
-        self.imageCacheManager.stopCachingImages(for: assets, targetSize: cacheInfo.targetSize, contentMode: cacheInfo.contentMode, options: cacheInfo.options)
+        self.cacheManager.stopCachingImages(for: assets, targetSize: cacheInfo.targetSize, contentMode: cacheInfo.contentMode, options: cacheInfo.options)
+    }
+    
+    func requestImage(for index: Int, completion: @escaping (UIImage) -> ()) {
+        guard let asset = self.requestAsset(for: index), let cacheInfo = self.dataSource?.photoDataSourceCacheInfo() else { return }
+
+        self.cacheManager.requestImage(for: asset, targetSize: cacheInfo.targetSize, contentMode: cacheInfo.contentMode, options: cacheInfo.options) { (image, _) in
+            
+            // only return completion if image is non nil otherwise ignore request
+            guard let cachedImage = image else { return }
+            Thread.executeOnMainThread { completion(cachedImage) }
+        }
+    }
+    
+    func photoCount() -> Int {
+        return self.mediaAssets?.count ?? 0
     }
     
     // MARK: - Private
 
-    private func requestImage(for index: Int) -> PHAsset? {
+    private func requestAsset(for index: Int) -> PHAsset? {
         // check if requested index is within media assets
         guard index < self.mediaAssets?.count ?? 0 else { return nil }
         return self.mediaAssets?.object(at: index)
@@ -108,8 +132,6 @@ extension PhotoDataSource: PHPhotoLibraryChangeObserver {
         Thread.executeOnMainThread {
             // Update the cached fetch result.
             self.mediaAssets = changeDetails.fetchResultAfterChanges
-            
-            self.delegate?.photo(dataSource: self, didFetchPhotos: [])
         }
     }
 }
